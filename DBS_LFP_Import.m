@@ -1,4 +1,4 @@
-function EEG = DBS_LFP_Import(filename,srate)
+function EEG = DBS_LFP_Import(filename,srate,ChannelLabels,ROITimeWindow)
 % Function to import data of intracranial LFP collected from DBS patients
 % 
 % Inputs:
@@ -35,17 +35,27 @@ EEG.data = [];
 EEG.srate = srate;
 [~,FileName,~] = fileparts(filename(1,:));
 EEG.filename = FileName;
-if str2double(FileName(1)) == 7
-    EEG.chanlabels = {'RS_1';'RS_2';'RS_3';'RD_1';'RD_2';'RD_3'};
-    data_temp = importdata(filename);
-    data_temp = data_temp(:,1:6);
-    EEG.data = data_temp;
-elseif str2double(FileName(1)) == 8
-    EEG.chanlabels = {'LS_1';'LS_2';'LS_3';'LD_1';'LD_2';'LD_3'};
-    data_temp = importdata(filename);
-    data_temp = data_temp(:,1:6);
-    EEG.data = data_temp;
-end
+
+TimeSample = ROITimeWindow/1000*srate +1;
+
+
+EEG.chanlabels = ChannelLabels;
+data_temp = importdata(filename);
+data_temp = data_temp(TimeSample(1):TimeSample(2),1:6);
+EEG.data = data_temp;
+
+
+% if str2double(FileName(1)) == 7
+%     EEG.chanlabels = {'RS_1';'RS_2';'RS_3';'RD_1';'RD_2';'RD_3'};
+%     data_temp = importdata(filename);
+%     data_temp = data_temp(:,1:6);
+%     EEG.data = data_temp;
+% elseif str2double(FileName(1)) == 8
+%     EEG.chanlabels = {'LS_1';'LS_2';'LS_3';'LD_1';'LD_2';'LD_3'};
+%     data_temp = importdata(filename);
+%     data_temp = data_temp(:,1:6);
+%     EEG.data = data_temp;
+% end
 
 
 

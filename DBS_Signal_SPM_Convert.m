@@ -1,11 +1,11 @@
-function D = DBS_Signal_SPM_Convert(fname)
+function D = DBS_Signal_SPM_Convert(fname,srate,ChannelLabels,ROITimeWindow)
 % This function is used to convert the EEG LFP signal collected from PD DBS
 % patient to SPM M/EEG format.
-if nargin<1 || isempty(filename)
+if nargin<1 || isempty(fname)
     fname = spm_select(inf,'any','Select file to import',{},pwd,'.txt');
 end
 %% import and organize the txt EEG file
-EEG = DBS_LFP_Import(fname);
+EEG = DBS_LFP_Import(fname,srate,ChannelLabels,ROITimeWindow);
 
 %% convert it to SPM MEEG object for process later
 % Initialize SPM
