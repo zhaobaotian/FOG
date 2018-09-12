@@ -1,7 +1,9 @@
 % Scripts to replicate the signal analysis methods from paper:
 % Neumann, Wolf-Julian, et al. "Pallidal and thalamic neural oscillatory 
 % patterns in Tourette syndrome." Annals of neurology (2018).
-clear
+clear;
+SubjectFolder = 'D:\FOG\Data\Dystonia001';
+cd(SubjectFolder)
 % Functional Neurosurgery Department of Tian Tan Hospital
 %% -----------------DEFINE PARAMETERS HERE!!!----------------- %%
 %--------------------------------------------------------------------%
@@ -31,6 +33,7 @@ ROIFreqBand{2}          = [13 35]; % beta band
 % Theta bursts detection threshold: 75th percentile of averged power of 
 % theta band (3-12Hz)
 AvgBandPower            = [3 12];  % theta band
+ThresholdPercentage     = 75;      % 75%
 BurstLengthThreshold    = 200;     % 200ms minimum
 PreburstBaseline        = 500;     % 500ms baseline
 BurstEpoch              = 1500;    % 1500ms Window for burst
@@ -41,7 +44,15 @@ TimeAxisSmooth          = 250;     % 250ms
 %--------------------------------------------------------------------%
 % Highpass filter detrending
 HighPassFrequency       = 0.5;     % High pass filter cutoff frequency
-%----------------------PARAMETERS DONE-------------------------------%
+%--------------------------------------------------------------------%
+% 50Hz line noise filter
+Notch50                 = 1;       % 0: NOT do the 50Hz line noise filter
+                                   % 1: DO the 50Hz line noise filter
+StopBand                = [47 53;97 103]; % Stop Band for linenoise notch filter 
+NormMethod              = 1;       % 1: Normalize to the std of the Band Power spectrum
+                                   % 2: Normalize to the std of the Band
+                                   %    Power maxtrix
+%--------------------------PARAMETERS DONE---------------------------%
 
 %% convert data to SPM format
 % Initialize SPM EEG module
@@ -88,10 +99,37 @@ for i = 1:size(D_HighPass,1)
     figure
     pwelch(D_HighPass(i,:,1),500,250,[],srate);
 end
-
+%% 50Hz line noise notch filter
+if Notch50
+    % 50 Hz notch filter
+    clear S
+    S.D              = D_HighPass;
+    S.band           = 'stop';
+    S.freq           = StopBand(1,:);
+    S.order          = 3;
+    S.prefix         = 'Notch50_';
+    D_HighPass_Notch = spm_eeg_filter(S);
+    % 100 Hz notch filter
+    clear S
+    S.D              = D_HighPass_Notch;
+    S.band           = 'stop';
+    S.freq           = StopBand(2,:);
+    S.order          = 3;
+    S.prefix         = 'Notch100_';
+    D_HighPass_Notch = spm_eeg_filter(S);
+end
+% for visually check after notch filter
+for i = 1:size(D_HighPass_Notch,1)
+    figure
+    pwelch(D_HighPass_Notch(i,:,1),500,250,[],srate);
+end
 %% Time frequency decomposition using SPM wavelet
 clear S
-S.D           = D_HighPass;
+if Notch50
+    S.D       = D_HighPass_Notch;
+else
+    S.D       = D_HighPass;
+end
 S.channels    = 'all';
 S.frequencies = ROIFrequencies;
 S.timewin     = [-Inf Inf];
@@ -103,19 +141,81 @@ S.settings.ncycles     = 10;
 % TFMatrix = channels * frequencies * samples
 TFMatrix = D_tf(:,:,:,1);
 
-% Smooth the TFMatrix channel by channel
+% Averaging over time resulted in resting power spectra
+% that were normalized to the standard deviation of the 
+% 5 - 45 Hz and 55 - 95 Hz band power
+mkdir('PCS')
+cd('PCS')
+PowerSpectrumNormalized = zeros(6,40);
+for i = 1:D_tf.nchannels
+    PowerSpectrum = mean(squeeze(TFMatrix(i,:,:)),2);
+    switch NormMethod
+        case 1
+            STD = std(PowerSpectrum([5:45 55:95]));
+        case 2
+            Power  = squeeze(TFMatrix(i,[5:45 55:95],:));
+            STD    = std(reshape(Power,[numel(Power) 1]));
+    end
+    figure
+    set(gcf,'Color',[1 1 1])
+    BarHeight    = 15;
+    BarWith      = [10 23];
+    BarPosition  = [3 13];
+    BarColor     = [0.85 0.85 0.85;0.94 0.94 0.94];
+    bar(4:11,repmat(BarHeight,[8 1]),2,'FaceColor',[0.85 0.85 0.85],'EdgeColor','none')
+    hold on
+    bar(14:34,repmat(BarHeight,[21 1]),2,'FaceColor',[0.94 0.94 0.94],'EdgeColor','none')
+    
+    PowerSpectrumNormalized(i,:) = PowerSpectrum(1:40)/STD;
+    plot(PowerSpectrumNormalized(i,:),'Color',[0.8 0.2 0.247],'LineWidth',4)
+    set(gca,'FontSize',14);
+    xlabel('Frequency [Hz]', 'FontSize', 18)
+    ylabel('Relative spectral power [a.u.]', 'FontSize', 18)
+    ylim([0 15])
+    xlim([0 37])
+    xticks(0:10:30)
+    title(D_tf.chanlabels{i},'Interpreter', 'none', 'FontSize', 20,'Position',[5 15.1 0])
+    print([D_tf.chanlabels{i} '_' 'Normalized_Power_Spectrum'],'-dpng','-r300')
+    close
+end
+cd(SubjectFolder)
+%% Find peaks on each channel power spectrum and aligned to the respective peaks
+for i = 1:D_tf.nchannels
+    figure
+    findpeaks(PowerSpectrumNormalized(i,:))
+end
+% Pending, To be contunued...
+%% theta bursts detection
+% theta band filter for visualization later
+clear S
+if Notch50
+    S.D       = D_HighPass_Notch;
+else
+    S.D       = D_HighPass;
+end
+S.band           = 'stop';
+S.freq           = StopBand(1,:);
+S.order          = 3;
+S.prefix         = 'Theta_';
+D_Theta = spm_eeg_filter(S);
+    
+for i = 1:D_tf.nchannels
+
+
+
+
+
+
+%%
+% Time frequency representations were smoothed with a full width half 
+% maximum gaussian smoothing kernel of 2 Hz and 250 ms length for burst 
+% analysis.
 TFMatrixSmoothed = zeros(size(TFMatrix));
 for i = 1:size(TFMatrix,1)
     TF_temp = squeeze(TFMatrix(i,:,:));
     TFMatrixSmoothed(i,:,:) = imgaussfilt(TF_temp,...
                               [FrequencySmooth TimeAxisSmooth/1000*500]);
 end
-
-% Normalize the power spectra
-Power  = squeeze(TFMatrixSmoothed(1,[5:45 55:95],:));
-STD = std(reshape(Power,[numel(Power) 1]));
-
-% 
 % ROI = [1000:3500];
 % figure
 % imagesc(log10(squeeze(D_tf(2,:,ROI,1))))
@@ -127,29 +227,8 @@ STD = std(reshape(Power,[numel(Power) 1]));
 % colormap jet
 % axis xy
 
+%% 
 
-% Averaging over time resulted in resting power spectra
-PowerSpectrum = mean(squeeze(TFMatrixSmoothed(1,:,:)),2);
-figure
-plot(PowerSpectrum(1:40)/STD,'Color',[0.8 0.2 0.247],'LineWidth',3)
-xlabel('Frequency [Hz]')
-ylabel('Relative spectral power [a.u.]')
-%%
-D = HighPass_50Hz_Filter(fname);
-data  = D_f(1,:,1);
-plotECG(D_f.time,data')
-figure
-PSDWelch = pwelch(D(3,:,1),500,250,[],500);
-figure
-plot(log10(PSDWelch))
-findpeaks(PSDWelch)
-findpeaks(PSDWelch,'MinPeakProminence',0.00001,'Annotate','extents')
-
-fname = spm_select();
-D_f = spm_eeg_load(fname);
-
-fname = spm_select();
-D_TF = spm_eeg_load(fname);
 
 figure;
 imagesc((squeeze(D_TF(2,:,1:1500,1))));
@@ -166,7 +245,6 @@ axis xy
 
 % plotECG(D_f(4,:,1))
 
-
 % pwelch(D_f(4,:,1),50,25,[],500)
 powerspd = squeeze(D_TF(2,:,:,1));
 SmoothedPowerSPD = imgaussfilt(powerspd,[FrequencySmooth TimeAxisSmooth/1000*500]);
@@ -175,25 +253,9 @@ figure
 plot(mean(SmoothedPowerSPD,2))
 
 %% normalize to std
-LowerBandPower = SmoothedPowerSPD(1:45,:);
-HigherBandPower = SmoothedPowerSPD(55:95,:);
-LowerBandPowerSTD = std(LowerBandPower,0,2);
-HigherBandPowerSTD = std(HigherBandPower,0,2);
 
-LowerBandNormalized = LowerBandPower./LowerBandPowerSTD;
-HigherBandNormalized = HigherBandPower./HigherBandPowerSTD;
-figure
-imagesc((LowerBandNormalized(:,5000:10000)))
-colormap jet
-axis xy
 
-Spectra_data = mean(LowerBandNormalized(:,:),2);
-figure
-plot(Spectra_data)
-xticks(1:45)
-xticklabels(1:45)
-
-%% COHERENCE
+%% Imaginary part coherence
 % The input data input should be an array organized as:
 %   Repetitions x Channel x Channel (x Frequency) (x Time)
 % or
