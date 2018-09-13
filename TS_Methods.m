@@ -9,7 +9,7 @@ cd(SubjectFolder)
 %--------------------------------------------------------------------%
 % Define your interested timewindow here and the unseleted time series data
 % will be discarded during format conversion
-ROITimeWindow           = [0 150000]; % in ms
+ROITimeWindow           = [0 60000]; % in ms
 %--------------------------------------------------------------------%
 % Define your interested frequencies for time frequency decomposition,
 % please pay attention to the Nyquist Law.
@@ -27,8 +27,8 @@ srate                   = 500;
 ChannelLabels           = {'LD_A_1';'LD_A_2';'LD_A_3';'LD_B_1';'LD_B_2';'LD_B_3'};
 %--------------------------------------------------------------------%
 % Frequency band of interest for power spectra plot
-ROIFreqBand{1}          = [3 12];  % theta band
-ROIFreqBand{2}          = [13 35]; % beta band
+ThetaBand               = [3 12];  % theta band
+BetaBand                = [13 35]; % beta band
 %--------------------------------------------------------------------%
 % Theta bursts detection threshold: 75th percentile of averged power of 
 % theta band (3-12Hz)
@@ -52,6 +52,9 @@ StopBand                = [47 53;97 103]; % Stop Band for linenoise notch filter
 NormMethod              = 1;       % 1: Normalize to the std of the Band Power spectrum
                                    % 2: Normalize to the std of the Band
                                    %    Power maxtrix
+%--------------------------------------------------------------------%
+% Visually check indicator
+VisualCheck            = 0;        % 1: yes; 0: no
 %--------------------------PARAMETERS DONE---------------------------%
 
 %% convert data to SPM format
@@ -60,12 +63,13 @@ spm('defaults', 'EEG');
 D_Raw = DBS_Signal_SPM_Convert([],srate,ChannelLabels,ROITimeWindow);
 
 % for visually check the raw data
-for i = 1:size(D_Raw,1)
-    plotECG(D_Raw.time,D_Raw(i,:,1))
+if VisualCheck
+    for i = 1:size(D_Raw,1)
+        plotECG(D_Raw.time,D_Raw(i,:,1))
+    end
+    plotECG(D_Raw.time,D_Raw(:,:,1)',...
+        'AutoStackSignals',D_Raw.chanlabels)
 end
-plotECG(D_Raw.time,D_Raw(:,:,1)',...
-    'AutoStackSignals',D_Raw.chanlabels)
-
 %% Baseline correction and detrending
 % baseline correction using spm
 clear S
@@ -73,11 +77,13 @@ S.D  = D_Raw;
 D_bc = spm_eeg_bc(S);
 
 % for visually check baseline corrected data
-for i = 1:size(D_bc,1)
-    plotECG(D_bc.time,D_bc(i,:,1))
+if VisualCheck
+    for i = 1:size(D_bc,1)
+        plotECG(D_bc.time,D_bc(i,:,1))
+    end
+    plotECG(D_bc.time,D_bc(:,:,1)',...
+        'AutoStackSignals',D_bc.chanlabels)
 end
-plotECG(D_bc.time,D_bc(:,:,1)',...
-    'AutoStackSignals',D_bc.chanlabels)
 % High pass filter as detrending
 clear S
 S.D      = D_bc;
@@ -88,16 +94,18 @@ S.prefix = 'HP_';
 D_HighPass = spm_eeg_filter(S);
 
 % for visually check highpass data
-for i = 1:size(D_HighPass,1)
-    plotECG(D_HighPass.time,D_HighPass(i,:,1))
-end
-plotECG(D_HighPass.time,D_HighPass(:,:,1)',...
-    'AutoStackSignals',D_HighPass.chanlabels)
-
-% for visually check PSD using pwelch method
-for i = 1:size(D_HighPass,1)
-    figure
-    pwelch(D_HighPass(i,:,1),500,250,[],srate);
+if VisualCheck
+    for i = 1:size(D_HighPass,1)
+        plotECG(D_HighPass.time,D_HighPass(i,:,1))
+    end
+    plotECG(D_HighPass.time,D_HighPass(:,:,1)',...
+        'AutoStackSignals',D_HighPass.chanlabels)
+    
+    % for visually check PSD using pwelch method
+    for i = 1:size(D_HighPass,1)
+        figure
+        pwelch(D_HighPass(i,:,1),500,250,[],srate);
+    end
 end
 %% 50Hz line noise notch filter
 if Notch50
@@ -119,9 +127,11 @@ if Notch50
     D_HighPass_Notch = spm_eeg_filter(S);
 end
 % for visually check after notch filter
-for i = 1:size(D_HighPass_Notch,1)
-    figure
-    pwelch(D_HighPass_Notch(i,:,1),500,250,[],srate);
+if VisualCheck
+    for i = 1:size(D_HighPass_Notch,1)
+        figure
+        pwelch(D_HighPass_Notch(i,:,1),500,250,[],srate);
+    end
 end
 %% Time frequency decomposition using SPM wavelet
 clear S
@@ -146,7 +156,7 @@ TFMatrix = D_tf(:,:,:,1);
 % 5 - 45 Hz and 55 - 95 Hz band power
 mkdir('PCS')
 cd('PCS')
-PowerSpectrumNormalized = zeros(6,40);
+PowerSpectrumNormalized = zeros(D_tf.nchannels,40);
 for i = 1:D_tf.nchannels
     PowerSpectrum = mean(squeeze(TFMatrix(i,:,:)),2);
     switch NormMethod
@@ -178,7 +188,6 @@ for i = 1:D_tf.nchannels
     print([D_tf.chanlabels{i} '_' 'Normalized_Power_Spectrum'],'-dpng','-r300')
     close
 end
-cd(SubjectFolder)
 %% Find peaks on each channel power spectrum and aligned to the respective peaks
 for i = 1:D_tf.nchannels
     figure
@@ -189,24 +198,102 @@ end
 % theta band filter for visualization later
 clear S
 if Notch50
-    S.D       = D_HighPass_Notch;
+    S.D          = D_HighPass_Notch;
 else
-    S.D       = D_HighPass;
+    S.D          = D_HighPass;
 end
-S.band           = 'stop';
-S.freq           = StopBand(1,:);
+S.band           = 'bandpass';
+S.freq           = ThetaBand;
 S.order          = 3;
 S.prefix         = 'Theta_';
 D_Theta = spm_eeg_filter(S);
-    
+% for visually check theta band traces
+if VisualCheck
+    for i = 1:size(D_Theta,1)
+        plotECG(D_Theta.time,D_Theta(i,:,1))
+    end
+    plotECG(D_Theta.time,D_Theta(:,:,1)',...
+        'AutoStackSignals',D_Theta.chanlabels)
+end
+% Calculate the power envelope and 75 percent threshold
+ThetaPowerEnvelope = squeeze(mean(TFMatrix(:,ThetaBand(1):ThetaBand(2),:),2));
+Threshold75th      = prctile(ThetaPowerEnvelope,ThresholdPercentage,2);
+
+% for visually check the thresholds on each channel
+if VisualCheck
+    for i = 1:D_tf.nchannels
+        plotECG(D_Theta.time,[D_Theta(i,:,1)' (ThetaPowerEnvelope(i,:))' ...
+            repmat(Threshold75th(i),[D_Theta.nsamples,1])])
+    end
+end
+% initialize the output
+ThetaBurstTimestamps = cell(length(D_tf.nchannels),1); % one cell per channel
+
 for i = 1:D_tf.nchannels
+    % temporal variables for the current channel
+    ThetaPowerEnvelope_temp = (ThetaPowerEnvelope(i,:));
+    BurstInd                = find(ThetaPowerEnvelope_temp >= Threshold75th(i));
+    ThetaBurstGap           = find(diff(BurstInd)>1);
+    ThetaBurstMatrix        = [];
+    ThetaBurst_counter      = 0;
+    for j = 1:length(ThetaBurstGap)
+        if j == 1
+            onset            = BurstInd(1);
+            offset           = BurstInd(ThetaBurstGap(j));
+            %             PeakValue        = max(ThetaPowerEnvelope_temp(onset:offset));
+            ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
+        elseif j == length(ThetaBurstGap)
+            onset            = BurstInd(ThetaBurstGap(j)+1);
+            offset           = BurstInd(end);
+            %             PeakValue  = max(ThetaPowerEnvelope_temp(onset:offset));
+            ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
+        else
+            onset = BurstInd(ThetaBurstGap(j-1)+1);
+            offset = BurstInd(ThetaBurstGap(j));
+            %             PeakValue = max(ThetaPowerEnvelope_temp(onset:offset));
+            ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
+        end
+        if ThetaBurstLength > BurstLengthThreshold % exclude burst less than 200ms
+            ThetaBurst_counter = ThetaBurst_counter + 1;
+            ThetaBurstMatrix(ThetaBurst_counter,:) = ...
+                [(onset/D_tf.fsample)*1000 ThetaBurstLength (offset/D_tf.fsample)*1000]; 
+        end
+    end
+    ThetaBurstTimestamps{i} = ThetaBurstMatrix;
+end
 
+% for visulization and mannual check
+if VisualCheck
+    for i = 1:D_Theta.nchannels
+        timetamps_temp = ThetaBurstTimestamps{i};
+        Signal_temp = D_Theta(i,:,1);
+        TimeInterval = zeros(D_Theta.nsamples,1);
+        ThetaPowerEnvelope_temp = ThetaPowerEnvelope(i,:)';
+        for j = 1:size(timetamps_temp,1)
+            TimeInterval(int16((timetamps_temp(j,1)/1000)*500):int16((timetamps_temp(j,3)/1000)*500)) = max(Signal_temp);
+        end
+        plotECG(D_Theta.time,[Signal_temp' repmat(Threshold75th(i),[D_Theta.nsamples 1]) TimeInterval ThetaPowerEnvelope_temp])
+    end
+end
 
+% data preparation for writing in an excel file
+ExcelFileName      = 'ThetaBurstInfo.xlsx';
+ExcelSheet         = 1;
+ChannelLabels      = D_Theta.chanlabels;
+ChannelLabelTitles = {ChannelLabels{1},[],[],ChannelLabels{2},[],[],...
+                      ChannelLabels{3},[],[],ChannelLabels{4},[],[],...
+                      ChannelLabels{5},[],[],ChannelLabels{6},[],[]};
+ThetaBurstContents = repmat({'Onset(ms)','Duration(ms)','Offset(ms)'},[1 6]);
 
-
-
-
-%%
+xlswrite(ExcelFileName,ChannelLabelTitles,ExcelSheet,'A1')
+xlswrite(ExcelFileName,ThetaBurstContents,ExcelSheet,'A2')
+xlswrite(ExcelFileName,ThetaBurstTimestamps{1},ExcelSheet,'A3')
+xlswrite(ExcelFileName,ThetaBurstTimestamps{2},ExcelSheet,'D3')
+xlswrite(ExcelFileName,ThetaBurstTimestamps{3},ExcelSheet,'G3')
+xlswrite(ExcelFileName,ThetaBurstTimestamps{4},ExcelSheet,'J3')
+xlswrite(ExcelFileName,ThetaBurstTimestamps{5},ExcelSheet,'M3')
+xlswrite(ExcelFileName,ThetaBurstTimestamps{6},ExcelSheet,'P3')
+%% Alligned theta burst for time frequency presentation
 % Time frequency representations were smoothed with a full width half 
 % maximum gaussian smoothing kernel of 2 Hz and 250 ms length for burst 
 % analysis.
@@ -214,8 +301,45 @@ TFMatrixSmoothed = zeros(size(TFMatrix));
 for i = 1:size(TFMatrix,1)
     TF_temp = squeeze(TFMatrix(i,:,:));
     TFMatrixSmoothed(i,:,:) = imgaussfilt(TF_temp,...
-                              [FrequencySmooth TimeAxisSmooth/1000*500]);
+                              [FrequencySmooth TimeAxisSmooth/1000*D_Theta.fsample]);
 end
+
+% Extract TF data of theta burst from -500ms to 1500ms
+ThetaBurstTF = cell(length(D_tf.nchannels),1);
+for i = 1:D_tf.nchannels
+    % temporal variables for the current channel
+    ThetaPowerEnvelope_temp = (ThetaPowerEnvelope(i,:));
+    BurstInd                = find(ThetaPowerEnvelope_temp >= Threshold75th(i));
+    ThetaBurstGap           = find(diff(BurstInd)>1);
+    ThetaBurstMatrix        = [];
+    ThetaBurst_counter      = 0;
+    for j = 1:length(ThetaBurstGap)
+        if j == 1
+            onset            = BurstInd(1);
+            offset           = BurstInd(ThetaBurstGap(j));
+            %             PeakValue        = max(ThetaPowerEnvelope_temp(onset:offset));
+            ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
+        elseif j == length(ThetaBurstGap)
+            onset            = BurstInd(ThetaBurstGap(j)+1);
+            offset           = BurstInd(end);
+            %             PeakValue  = max(ThetaPowerEnvelope_temp(onset:offset));
+            ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
+        else
+            onset = BurstInd(ThetaBurstGap(j-1)+1);
+            offset = BurstInd(ThetaBurstGap(j));
+            %             PeakValue = max(ThetaPowerEnvelope_temp(onset:offset));
+            ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
+        end
+        if ThetaBurstLength > BurstLengthThreshold % exclude burst less than 200ms
+            ThetaBurst_counter = ThetaBurst_counter + 1;
+            ThetaBurstMatrix(ThetaBurst_counter,:) = ...
+                [(onset/D_tf.fsample)*1000 ThetaBurstLength (offset/D_tf.fsample)*1000]; 
+        end
+    end
+    ThetaBurstTimestamps{i} = ThetaBurstMatrix;
+end
+
+
 % ROI = [1000:3500];
 % figure
 % imagesc(log10(squeeze(D_tf(2,:,ROI,1))))
@@ -251,8 +375,6 @@ SmoothedPowerSPD = imgaussfilt(powerspd,[FrequencySmooth TimeAxisSmooth/1000*500
 
 figure
 plot(mean(SmoothedPowerSPD,2))
-
-%% normalize to std
 
 
 %% Imaginary part coherence
