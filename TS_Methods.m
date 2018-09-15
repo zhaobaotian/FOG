@@ -484,11 +484,30 @@ for i = 1:D_tf.nchannels
     ThetaBurstTFNormalization{i} = ThetaBurstTFNormalizationMatrix;
 end
 
-figure
-contourf(imgaussfilt((squeeze(mean(ThetaBurstTFNormalization{3}))),[FrequencySmooth TimeAxisSmooth/1000*D_Theta.fsample]));
-axis xy
-imagesc(imgaussfilt((squeeze(mean(ThetaBurstTFNormalization{1}))),[FrequencySmooth TimeAxisSmooth/1000*D_Theta.fsample]));
-axis xy
+% plot the averaged theta burst TF map
+for i = 1:D_tf.nchannels
+    figure
+    set(gcf,'Color',[1 1 1])
+    % Time frequency representations were smoothed with a full width half
+    % maximum gaussian smoothing kernel of 2 Hz and 250 ms length for burst
+    % analysis.
+    ThetaTFmap = imgaussfilt((squeeze(mean(ThetaBurstTFNormalization{i}))),[FrequencySmooth TimeAxisSmooth/1000*D_Theta.fsample]);
+    % No smooth
+    % ThetaTFmap = squeeze(mean(ThetaBurstTFNormalization{3}));
+    contourf(ThetaTFmap,40,'LineStyle','none');
+    set(gca,'FontSize',14);
+    xlabel('Time [s]', 'FontSize', 18)
+    ylabel('Frequency [Hz]', 'FontSize', 18)
+    xticks(1:250:1001)
+    xticklabels(-0.5:0.5:1.5)
+    ThetaColorBar = colorbar;
+    ThetaColorBar.Label.String = 'Relative Spectral Power [%]';
+    grid on
+    set(gca,'GridColor',[0.8 0.8 0.8])
+    title(D_tf.chanlabels{i},'Interpreter', 'none', 'FontSize', 20)
+    print([D_tf.chanlabels{i} '_' 'Theta_Burst_Averaged_TF'],'-dpng','-r300')
+    close
+end
 
 % 
 % figure
