@@ -1,6 +1,8 @@
 % Scripts to replicate the signal analysis methods from paper:
 % Neumann, Wolf-Julian, et al. "Pallidal and thalamic neural oscillatory 
 % patterns in Tourette syndrome." Annals of neurology (2018).
+
+% Baotian Zhao @ Beijing 20180917
 clear;
 SubjectFolder = 'D:\FOG\Data\Dystonia001';
 cd(SubjectFolder)
@@ -413,6 +415,42 @@ xlswrite(ExcelFileName,ThetaBurstTimestamps{3},ExcelSheet,'G3')
 xlswrite(ExcelFileName,ThetaBurstTimestamps{4},ExcelSheet,'J3')
 xlswrite(ExcelFileName,ThetaBurstTimestamps{5},ExcelSheet,'M3')
 xlswrite(ExcelFileName,ThetaBurstTimestamps{6},ExcelSheet,'P3')
+
+% Bar plot of the Theta Burst duration distribution on each channel
+for i = 1:D_tf.nchannels
+    % the second row denotes the durations of theta bursts
+    ThetaBurstTimestampsDuration_temp = ThetaBurstTimestamps{i}(:,2);
+    nBins = 13;
+    ThetaBarColors = repmat(linspace(180,76,13)/255,[3 1]);
+    figure
+    for j = 1:nBins
+        if j < 13
+            nThetaBurst = length(find(ThetaBurstTimestampsDuration_temp <= 300 + (j - 1) * 100 & ...
+                ThetaBurstTimestampsDuration_temp >= 200 + (j - 1) * 100));
+            bar(j,nThetaBurst,1,'FaceColor',ThetaBarColors(:,j))
+            hold on
+            %         errorbar(j,nThetaBurst,std(ThetaBurstTimestampsDuration_temp(find(ThetaBurstTimestampsDuration_temp < 300 + (j - 1) * 100 & ...
+            %             ThetaBurstTimestampsDuration_temp >= 200 + (j - 1) * 100))))
+        elseif j == 13
+            bar(j,length(find(ThetaBurstTimestampsDuration_temp > 200 + (j - 1) * 100)),1,'FaceColor',ThetaBarColors(:,j))
+        end
+        ThetaBurstHist(i,j) = nThetaBurst;
+    end
+    xticks(1:13)
+    xticklabels([(3:14)*100])
+    ax = gca;
+    ax.XTickLabel{13} = '>1400';
+    ylim([0 max(ThetaBurstHist(i,:))+5]);
+    set(gca,'FontSize',12);
+    ylabel('N bursts','FontSize', 14)
+    xlabel('Theta Burst length [ms]','FontSize', 14)
+    xtickangle(30)
+    title(D_tf.chanlabels{i},'Interpreter', 'none', 'FontSize', 16)
+    set(gcf,'units','pixels','position',[0 0 700 250])
+    print(['Theta_Bursts_Length_Histogram' '_' D_tf.chanlabels{i}],'-dpng','-r300')
+    close
+end
+
 %% Alligned theta burst for time frequency presentation
 % Time frequency representations were smoothed with a full width half 
 % maximum gaussian smoothing kernel of 2 Hz and 250 ms length for burst 
@@ -446,41 +484,74 @@ xlswrite(ExcelFileName,ThetaBurstTimestamps{6},ExcelSheet,'P3')
 ThetaBurstTF = cell(D_tf.nchannels,1);
 for i = 1:D_tf.nchannels
     % temporal variables for the current channel
-    ThetaBurstTF_temp         = squeeze(TFMatrix(i,ThetaTFFrequencies(1):ThetaTFFrequencies(2),:));
-    ThetaBurstTFMatrix        = zeros(size(ThetaBurstTimestamps{i},1),30,1001);
+    ThetaBurstTF_temp          = squeeze(TFMatrix(i,ThetaTFFrequencies(1):ThetaTFFrequencies(2),:));
+    ThetaBurstTFMatrix         = [];
+    ThetaBurstTFMatrix_Counter = 0;
     for j = 1:size(ThetaBurstTimestamps{i},1)
         if ThetaBurstTimestamps{i}(j,1) > PreburstBaseline &&...
                 ThetaBurstTimestamps{i}(j,1) + 1500 < ROITimeWindow(2) - ROITimeWindow(1)
+            ThetaBurstTFMatrix_Counter = ThetaBurstTFMatrix_Counter + 1;
             ThetaBurstInterval        = int16((ThetaBurstTimestamps{i}(j,1) - PreburstBaseline)/1000*D_tf.fsample):...
                 int16((ThetaBurstTimestamps{i}(j,1) + BurstEpoch)/1000*D_tf.fsample);
-            ThetaBurstTFMatrix(j,:,:) = ThetaBurstTF_temp(:,ThetaBurstInterval);
+            ThetaBurstTFMatrix(ThetaBurstTFMatrix_Counter,:,:) = ThetaBurstTF_temp(:,ThetaBurstInterval);
         end
     end
     ThetaBurstTF{i} = ThetaBurstTFMatrix;
 end
 
+% % Power normalization to the baseline (percent change)
+% % single epoch normalizaiton before the average
+% ThetaBurstTFNormalization = cell(D_tf.nchannels,1);
+% for i = 1:D_tf.nchannels
+%     % temporal variables for the current channel
+%     ThetaBurstTFNormalization_temp         = ThetaBurstTF{i};
+%     ThetaBurstTFNormalizationMatrix        = zeros(size(ThetaBurstTFNormalization_temp));
+%     for j = 1:size(ThetaBurstTFNormalization_temp,1)
+%         BaselinePower = mean(squeeze(ThetaBurstTFNormalization_temp(j,:,1:int16(PreburstBaseline/1000*500))),2);
+%         ThetaBurstTFNormalizationMatrix(j,:,:) = (squeeze(ThetaBurstTFNormalization_temp(j,:,:))-BaselinePower)./BaselinePower;
+%         if VisualCheck
+%             figure
+%             contourf(squeeze(ThetaBurstTFNormalizationMatrix(j,:,:)),'LineStyle','none');
+%         end
+%     end
+%     ThetaBurstTFNormalization{i} = ThetaBurstTFNormalizationMatrix;
+% end
+% % plot the averaged theta burst TF map
+% for i = 1:D_tf.nchannels
+%     figure
+%     set(gcf,'Color',[1 1 1])
+%     % Time frequency representations were smoothed with a full width half
+%     % maximum gaussian smoothing kernel of 2 Hz and 250 ms length for burst
+%     % analysis.
+%     ThetaTFmap = imgaussfilt(squeeze(mean(ThetaBurstTFNormalization{i}))*100,[FrequencySmooth TimeAxisSmooth/1000*D_Theta.fsample]);
+%     % No smooth
+%     % ThetaTFmap = squeeze(mean(ThetaBurstTFNormalization{3}));
+%     contourf(ThetaTFmap,40,'LineStyle','none');
+%     set(gca,'FontSize',14);
+%     xlabel('Time [s]', 'FontSize', 18)
+%     ylabel('Frequency [Hz]', 'FontSize', 18)
+%     xticks(1:250:1001)
+%     xticklabels(-0.5:0.5:1.5)
+%     ThetaColorBar = colorbar;
+%     ThetaColorBar.Label.String = 'Relative Spectral Power [%]';
+%     grid on
+%     set(gca,'GridColor',[0.8 0.8 0.8])
+%     title(D_tf.chanlabels{i},'Interpreter', 'none', 'FontSize', 20)
+%     print([D_tf.chanlabels{i} '_' 'Theta_Burst_Averaged_TF_1'],'-dpng','-r300')
+%     close
+% end
+
+
 % Power normalization to the baseline (percent change)
+% Average the raw TF representations before the baseline normalization
 ThetaBurstTFNormalization = cell(D_tf.nchannels,1);
 for i = 1:D_tf.nchannels
     % temporal variables for the current channel
     ThetaBurstTFNormalization_temp         = ThetaBurstTF{i};
     ThetaBurstTFNormalizationMatrix        = zeros(size(ThetaBurstTFNormalization_temp));
-    for j = 1:size(ThetaBurstTFNormalization_temp,1)
-        BaselinePower = mean(squeeze(ThetaBurstTFNormalization_temp(j,:,1:int16(PreburstBaseline/1000*500))),2);
-        ThetaBurstTFNormalizationMatrix(j,:,:) = squeeze(ThetaBurstTFNormalization_temp(j,:,:))./BaselinePower;
-    end
-    ThetaBurstTFNormalization{i} = ThetaBurstTFNormalizationMatrix;
-end
-
-% visualize the TF of each channel
-for i = 1:D_tf.nchannels
-    % temporal variables for the current channel
-    ThetaBurstTFNormalization_temp         = ThetaBurstTF{i};
-    ThetaBurstTFNormalizationMatrix        = zeros(size(ThetaBurstTFNormalization_temp));
-    for j = 1:size(ThetaBurstTFNormalization_temp,1)
-        BaselinePower = mean(squeeze(ThetaBurstTFNormalization_temp(j,:,1:int16(PreburstBaseline/1000*500))),2);
-        ThetaBurstTFNormalizationMatrix(j,:,:) = ((squeeze(ThetaBurstTFNormalization_temp(j,:,:))-BaselinePower)./BaselinePower)*100;
-    end
+    ThetaBurstTFNormalizationMean = squeeze(mean(ThetaBurstTFNormalization_temp));
+    BaselinePower  = mean(ThetaBurstTFNormalizationMean(:,1:int16(PreburstBaseline/1000*500)),2);
+    ThetaBurstTFNormalizationMatrix = squeeze((ThetaBurstTFNormalizationMean-BaselinePower)./BaselinePower);
     ThetaBurstTFNormalization{i} = ThetaBurstTFNormalizationMatrix;
 end
 
@@ -491,9 +562,7 @@ for i = 1:D_tf.nchannels
     % Time frequency representations were smoothed with a full width half
     % maximum gaussian smoothing kernel of 2 Hz and 250 ms length for burst
     % analysis.
-    ThetaTFmap = imgaussfilt((squeeze(mean(ThetaBurstTFNormalization{i}))),[FrequencySmooth TimeAxisSmooth/1000*D_Theta.fsample]);
-    % No smooth
-    % ThetaTFmap = squeeze(mean(ThetaBurstTFNormalization{3}));
+    ThetaTFmap = imgaussfilt(ThetaBurstTFNormalization{i}*100,[FrequencySmooth TimeAxisSmooth/1000*D_Theta.fsample]);
     contourf(ThetaTFmap,40,'LineStyle','none');
     set(gca,'FontSize',14);
     xlabel('Time [s]', 'FontSize', 18)
@@ -501,7 +570,7 @@ for i = 1:D_tf.nchannels
     xticks(1:250:1001)
     xticklabels(-0.5:0.5:1.5)
     ThetaColorBar = colorbar;
-    ThetaColorBar.Label.String = 'Relative Spectral Power [%]';
+    ThetaColorBar.Label.String = 'Relative Spectral Power [Percent Change (%)]';
     grid on
     set(gca,'GridColor',[0.8 0.8 0.8])
     title(D_tf.chanlabels{i},'Interpreter', 'none', 'FontSize', 20)
@@ -509,84 +578,98 @@ for i = 1:D_tf.nchannels
     close
 end
 
-% 
-% figure
-% imagesc(log10(squeeze(TFMatrixSmoothed(2,:,ROI))))
-% colormap jet
-% axis xy
-
-%% 
-
-
-figure;
-imagesc((squeeze(D_TF(2,:,1:1500,1))));
-
-ROI = [1000:3500];
-figure
-imagesc(log10(squeeze(D_TF(2,:,ROI,1))))
-colormap jet
-axis xy
-figure
-imagesc(log10(SmoothedPowerSPD(:,ROI)))
-colormap jet
-axis xy
-
-% plotECG(D_f(4,:,1))
-
-% pwelch(D_f(4,:,1),50,25,[],500)
-powerspd = squeeze(D_TF(2,:,:,1));
-SmoothedPowerSPD = imgaussfilt(powerspd,[FrequencySmooth TimeAxisSmooth/1000*500]);
-
-figure
-plot(mean(SmoothedPowerSPD,2))
-
 
 %% Imaginary part coherence
-% The input data input should be an array organized as:
-%   Repetitions x Channel x Channel (x Frequency) (x Time)
-% or
-%   Repetitions x Channelcombination (x Frequency) (x Time)
-%
+% Add fieldtrip path
+[SPMpath,~,~] = fileparts(which('spm'));
+addpath([SPMpath filesep 'external' filesep 'fieldtrip'])
 
-[c, v, outcnt] = ft_connectivity_corr(input, varargin);
+% The coherence values reflect the consistency of the phase difference between the two signals at a given frequency
+% DATA preparation for the coherence calculation
+% iCOHDataHeader = ft_read_header(spm_select(1,'mat')); % select the .mat file
+iCOHData.label   = D_HighPass_Notch.chanlabels';
+iCOHData.time    = {D_HighPass_Notch.time(1:5000)};
+iCOHData.trial   = {D_HighPass_Notch(:,1:5000,1)};
+iCOHData.fsample = D_HighPass_Notch.fsample;
 
+if VisualCheck
+    figure
+    for i = 1:D_HighPass_Notch.nchannels
+        subplot(D_HighPass_Notch.nchannels,1,i);
+        plot(iCOHData.time{1},iCOHData.trial{1}(i,:));
+        axis tight;
+        legend(iCOHData.label(i));
+    end
+end
 
-%% theta (3-12Hz) burst detection
-theta_trace = spm_eeg_load();
-thetaBand = LowerBandNormalized(8,:);
-ThetaPower = thetaBand;
-thresholdline = prctile(ThetaPower,75);
-plotECG(theta_trace.time,[theta_trace(2,:,1)' (ThetaPower.*200)' repmat(thresholdline*200,[length(ThetaPower),1])])
+% fourier tf transform
+cfg            = [];
+cfg.output     = 'fourier';
+cfg.method     = 'mtmfft';
+cfg.foilim     = [1 37];
+cfg.tapsmofrq  = 5;
+cfg.keeptrials = 'yes';
+cfg.channel    = {'all'};
+freqfourier_iCOH    = ft_freqanalysis(cfg, iCOHData);
 
-% figure
-% plot(ThetaPower)
-
-%%
-plotECG(theta_trace.time,theta_trace(2,:,1))
-[envelope_lineup,~] = envelope(theta_trace(2,:,1),300,'peak');
-plotECG(theta_trace.time,[theta_trace(2,:,1)' envelope_lineup'])
-threshold = prctile(envelope_lineup,75);
-thresholdline = repmat(threshold,[length(envelope_lineup),1]);
-plotECG(theta_trace.time,[theta_trace(2,:,1)' envelope_lineup' thresholdline])
-
-% A= [1:6]
-% std(A)
-% A_nornalized = A/ans
-
-D_TF.chanlabels
-
-
-fname = spm_select();
-D_5_40 = spm_eeg_load(fname);
-plotECG(D_5_40.time,D_5_40(4,:,1));
-[envelope_lineup,~] = envelope(D_5_40(4,:,1),5,'peak');
-plotECG(D_5_40.time,[D_5_40(4,:,1)' envelope_line'])
-threshold = prctile(envelope_lineup,70);
-thresholdline = repmat(threshold,[length(envelope_lineup),1]);
-plotECG(D_5_40.time,[D_5_40(4,:,1)' envelope_lineup' thresholdline])
-
+% cfg            = [];
+% cfg.output     = 'powandcsd';
+% cfg.method     = 'mtmfft';
+% cfg.foilim     = [5 100];
+% cfg.tapsmofrq  = 5;
+% cfg.keeptrials = 'yes';
+% cfg.channel    = {'MEG' 'EMGlft' 'EMGrgt'};
+% cfg.channelcmb = {'MEG' 'EMGlft'; 'MEG' 'EMGrgt'};
+% freq           = ft_freqanalysis(cfg, data);
 
 
+% Calculate the imaginary part coherence
+cfg            = [];
+cfg.method     = 'coh';
+cfg.complex    = 'imag';
+cfg.channelcmb = {iCOHData.label{1} iCOHData.label{4}};
+fdfourier_iCOH = ft_connectivityanalysis(cfg, freqfourier_iCOH);
+
+cfg                  = [];
+cfg.parameter        = 'cohspctrm';
+cfg.xlim             = [1 37];
+cfg.refchannel       = iCOHData.label{4};
+% cfg.layout           = 'CTF151_helmet.mat';
+cfg.showlabels       = 'yes';
+% figure; ft_multiplotER(cfg, fd)
+cfg.channel = iCOHData.label{1};
+figure; ft_singleplotER(cfg, fdfourier_iCOH);
+
+% test
+cfg            = [];
+cfg.output     = 'powandcsd';
+cfg.method     = 'mtmfft';
+cfg.foilim     = [5 100];
+cfg.tapsmofrq  = 5;
+cfg.keeptrials = 'yes';
+cfg.channel    = {'MEG' 'EMGlft' 'EMGrgt'};
+cfg.channelcmb = {'MEG' 'EMGlft'; 'MEG' 'EMGrgt'};
+freq           = ft_freqanalysis(cfg, data);
+
+cfg            = [];
+cfg.method     = 'coh';
+cfg.channelcmb = {'MEG' 'EMG'};
+fd             = ft_connectivityanalysis(cfg, freq);
+
+
+cfg                  = [];
+cfg.parameter        = 'cohspctrm';
+cfg.xlim             = [5 80];
+cfg.refchannel       = 'EMGlft';
+% cfg.layout           = 'CTF151_helmet.mat';
+cfg.showlabels       = 'yes';
+% figure; ft_multiplotER(cfg, fd)
+cfg.channel = 'MRC21';
+figure; ft_singleplotER(cfg, fd);
+
+figure
+plot(fdfourier.freq,fdfourier.cohspctrm(230,:))
+axis tight
 
 
 
