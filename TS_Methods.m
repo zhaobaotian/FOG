@@ -580,16 +580,17 @@ end
 
 
 %% Imaginary part coherence
-% Add fieldtrip path
-[SPMpath,~,~] = fileparts(which('spm'));
-addpath([SPMpath filesep 'external' filesep 'fieldtrip'])
+% % Add fieldtrip path
+% [SPMpath,~,~] = fileparts(which('spm'));
+% addpath([SPMpath filesep 'external' filesep 'fieldtrip'])
+
 
 % The coherence values reflect the consistency of the phase difference between the two signals at a given frequency
 % DATA preparation for the coherence calculation
 % iCOHDataHeader = ft_read_header(spm_select(1,'mat')); % select the .mat file
 iCOHData.label   = D_HighPass_Notch.chanlabels';
-iCOHData.time    = {D_HighPass_Notch.time(1:5000)};
-iCOHData.trial   = {D_HighPass_Notch(:,1:5000,1)};
+iCOHData.time    = {D_HighPass_Notch.time};
+iCOHData.trial   = {D_HighPass_Notch(:,:,1)};
 iCOHData.fsample = D_HighPass_Notch.fsample;
 
 if VisualCheck
@@ -607,69 +608,54 @@ cfg            = [];
 cfg.output     = 'fourier';
 cfg.method     = 'mtmfft';
 cfg.foilim     = [1 37];
-cfg.tapsmofrq  = 5;
+cfg.tapsmofrq  = 1;
 cfg.keeptrials = 'yes';
 cfg.channel    = {'all'};
 freqfourier_iCOH    = ft_freqanalysis(cfg, iCOHData);
 
-% cfg            = [];
-% cfg.output     = 'powandcsd';
-% cfg.method     = 'mtmfft';
-% cfg.foilim     = [5 100];
-% cfg.tapsmofrq  = 5;
-% cfg.keeptrials = 'yes';
-% cfg.channel    = {'MEG' 'EMGlft' 'EMGrgt'};
-% cfg.channelcmb = {'MEG' 'EMGlft'; 'MEG' 'EMGrgt'};
-% freq           = ft_freqanalysis(cfg, data);
+for i = 1:D_HighPass_Notch.nchannels
+    for j = 1:D_HighPass_Notch.nchannels
+        % Calculate the imaginary part coherence
+        if isequal(i,j)
+            continue
+        end
+        cfg            = [];
+        cfg.method     = 'coh';
+        cfg.complex    = 'imag';
+        cfg.channelcmb = {iCOHData.label{i} iCOHData.label{j}};
+        fdfourier_iCOH = ft_connectivityanalysis(cfg, freqfourier_iCOH);       
+     
+        % smooth the output
+        x = abs(fdfourier_iCOH.cohspctrm);
+        windowSize = 150;
+        b = (1/windowSize)*ones(1,windowSize);
+        a = 1;
+        y = filtfilt(b,a,x);
+        
+        figure
+        set(gcf,'Color',[1 1 1])
+        BarHeight    = 0.8;
+        BarWith      = [10 23];
+        BarPosition  = [3 13];
+        BarColor     = [0.85 0.85 0.85;0.94 0.94 0.94];
+        bar(4:11,repmat(BarHeight,[8 1]),2,'FaceColor',[0.85 0.85 0.85],'EdgeColor','none')
+        hold on
+        bar(14:34,repmat(BarHeight,[21 1]),2,'FaceColor',[0.94 0.94 0.94],'EdgeColor','none')
+        plot(fdfourier_iCOH.freq,y,'Color',[0.8 0.2 0.247],'LineWidth',4)
+        set(gca,'FontSize',14);
+        xlabel('Frequency [Hz]', 'FontSize', 18)
+        ylabel('Imaginary part of coherence', 'FontSize', 18)
+        ylim([0 0.8])
+        xlim([0 37])
+        xticks(0:10:30)
+        title([D_HighPass_Notch.chanlabels{i},'_',D_HighPass_Notch.chanlabels{j}],...
+            'Interpreter', 'none', 'FontSize', 20)
+        print([D_HighPass_Notch.chanlabels{i},'_',D_HighPass_Notch.chanlabels{j},...
+            '_' 'iCOH'],'-dpng','-r300')
+        close
+    end
+end
 
-
-% Calculate the imaginary part coherence
-cfg            = [];
-cfg.method     = 'coh';
-cfg.complex    = 'imag';
-cfg.channelcmb = {iCOHData.label{1} iCOHData.label{4}};
-fdfourier_iCOH = ft_connectivityanalysis(cfg, freqfourier_iCOH);
-
-cfg                  = [];
-cfg.parameter        = 'cohspctrm';
-cfg.xlim             = [1 37];
-cfg.refchannel       = iCOHData.label{4};
-% cfg.layout           = 'CTF151_helmet.mat';
-cfg.showlabels       = 'yes';
-% figure; ft_multiplotER(cfg, fd)
-cfg.channel = iCOHData.label{1};
-figure; ft_singleplotER(cfg, fdfourier_iCOH);
-
-% test
-cfg            = [];
-cfg.output     = 'powandcsd';
-cfg.method     = 'mtmfft';
-cfg.foilim     = [5 100];
-cfg.tapsmofrq  = 5;
-cfg.keeptrials = 'yes';
-cfg.channel    = {'MEG' 'EMGlft' 'EMGrgt'};
-cfg.channelcmb = {'MEG' 'EMGlft'; 'MEG' 'EMGrgt'};
-freq           = ft_freqanalysis(cfg, data);
-
-cfg            = [];
-cfg.method     = 'coh';
-cfg.channelcmb = {'MEG' 'EMG'};
-fd             = ft_connectivityanalysis(cfg, freq);
-
-
-cfg                  = [];
-cfg.parameter        = 'cohspctrm';
-cfg.xlim             = [5 80];
-cfg.refchannel       = 'EMGlft';
-% cfg.layout           = 'CTF151_helmet.mat';
-cfg.showlabels       = 'yes';
-% figure; ft_multiplotER(cfg, fd)
-cfg.channel = 'MRC21';
-figure; ft_singleplotER(cfg, fd);
-
-figure
-plot(fdfourier.freq,fdfourier.cohspctrm(230,:))
-axis tight
 
 
 
