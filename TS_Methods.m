@@ -4,14 +4,14 @@
 
 % Baotian Zhao @ Beijing 20180917
 clear;
-SubjectFolder = 'D:\FOG\Data\Dystonia001';
+SubjectFolder = 'D:\FOG\Data\Dystonia002';
 cd(SubjectFolder)
 % Functional Neurosurgery Department of Tian Tan Hospital
 %% -----------------DEFINE PARAMETERS HERE!!!----------------- %%
 %--------------------------------------------------------------------%
 % Define your interested timewindow here and the unseleted time series data
 % will be discarded during format conversion
-ROITimeWindow           = [0 60000]; % in ms
+ROITimeWindow           = [0 120000]; % in ms
 %--------------------------------------------------------------------%
 % Define your interested frequencies for time frequency decomposition,
 % please pay attention to the Nyquist Law.
@@ -26,6 +26,8 @@ srate                   = 500;
 %--------------------------------------------------------------------%
 % Define the channel names, COLUMN-WISE. There should be 6 channels
 % representing 6 bipolar referenced traces from 2 depth DBS electrodes
+% The first 3 channels are located in the STN and the following 3 channels
+% are located in GPi
 ChannelLabels           = {'LD_A_1';'LD_A_2';'LD_A_3';'LD_B_1';'LD_B_2';'LD_B_3'};
 %--------------------------------------------------------------------%
 % Frequency band of interest for power spectra plot
@@ -55,7 +57,7 @@ StopBand                = [47 53;97 103]; % Stop Band for linenoise notch filter
 
 %--------------------------------------------------------------------%
 % Visually check indicator
-VisualCheck            = 0;        % 1: yes; 0: no
+VisualCheck            = 1;        % 1: yes; 0: no
 %--------------------------PARAMETERS DONE---------------------------%
 
 %% convert data to SPM format
@@ -358,14 +360,14 @@ for i = 1:D_tf.nchannels
     ThetaBurstGap           = find(diff(BurstInd)>1);
     ThetaBurstMatrix        = [];
     ThetaBurst_counter      = 0;
-    for j = 1:length(ThetaBurstGap)
+    for j = 1:length(ThetaBurstGap)+1
         if j == 1
             onset            = BurstInd(1);
             offset           = BurstInd(ThetaBurstGap(j));
             %             PeakValue        = max(ThetaPowerEnvelope_temp(onset:offset));
             ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
-        elseif j == length(ThetaBurstGap)
-            onset            = BurstInd(ThetaBurstGap(j)+1);
+        elseif j == length(ThetaBurstGap)+1
+            onset            = BurstInd(ThetaBurstGap(j-1)+1);
             offset           = BurstInd(end);
             %             PeakValue  = max(ThetaPowerEnvelope_temp(onset:offset));
             ThetaBurstLength = ((offset - onset)/D_tf.fsample)*1000; % in ms
@@ -392,7 +394,7 @@ if VisualCheck
         TimeInterval = zeros(D_Theta.nsamples,1);
         ThetaPowerEnvelope_temp = ThetaPowerEnvelope(i,:)';
         for j = 1:size(timetamps_temp,1)
-            TimeInterval(int16((timetamps_temp(j,1)/1000)*500):int16((timetamps_temp(j,3)/1000)*500)) = max(Signal_temp);
+            TimeInterval(int64((timetamps_temp(j,1)/1000)*500):int64((timetamps_temp(j,3)/1000)*500)) = max(Signal_temp);
         end
         plotECG(D_Theta.time,[Signal_temp' repmat(Threshold75th(i),[D_Theta.nsamples 1]) TimeInterval ThetaPowerEnvelope_temp])
     end
