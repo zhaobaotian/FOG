@@ -9,3 +9,4 @@
 *.zip
 *.png
 *.xlsx
+.DS_Store
